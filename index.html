@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>The Weakest Link - Distinct Players</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #0f172a; color: white; margin: 0; overflow: hidden; }
+        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+        canvas { display: block; }
+        #game-container { width: 100vw; height: 100vh; display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- UI LAYER -->
+    <div id="ui-root" class="fixed inset-0 z-50 flex flex-col items-center justify-center p-4">
+        
+        <!-- Auth Screen -->
+        <div id="auth-screen" class="w-full max-w-md glass p-8 rounded-3xl shadow-2xl space-y-6">
+            <div class="text-center">
+                <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">THE WEAKEST LINK</h1>
+                <p class="text-slate-400 text-sm mt-2">Daftar & Bedakan Karaktermu</p>
+            </div>
+            <div class="space-y-4">
+                <div id="signup-fields" class="hidden space-y-4">
+                    <input type="text" id="username-input" placeholder="Username" class="w-full bg-slate-800/50 border border-slate-700 p-3 rounded-xl outline-none focus:ring-2 ring-indigo-500 transition">
+                </div>
+                <input type="email" id="email-input" placeholder="Email" class="w-full bg-slate-800/50 border border-slate-700 p-3 rounded-xl outline-none focus:ring-2 ring-indigo-500 transition">
+                <input type="password" id="password-input" placeholder="Password" class="w-full bg-slate-800/50 border border-slate-700 p-3 rounded-xl outline-none focus:ring-2 ring-indigo-500 transition">
+                <button id="auth-btn" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition">Masuk</button>
+            </div>
+            <p class="text-center text-sm text-slate-400">
+                <span id="auth-toggle-text">Belum punya akun?</span>
+                <button id="auth-toggle-btn" class="text-indigo-400 font-semibold hover:underline ml-1">Daftar</button>
+            </p>
+        </div>
+
+        <!-- Dashboard Screen -->
+        <div id="dashboard-screen" class="hidden w-full max-w-5xl space-y-6">
+            <header class="flex justify-between items-center glass p-6 rounded-3xl border border-white/5">
+                <div>
+                    <h2 class="text-xl font-bold">Halo, <span id="display-name" class="text-indigo-400">...</span></h2>
+                    <p class="text-xs text-slate-400 mt-1">Status Mic: <span id="mic-status-label" class="font-bold text-red-400">Mati</span></p>
+                </div>
+                <button id="logout-btn" class="px-4 py-2 bg-slate-800 text-red-400 rounded-xl hover:bg-red-900/20 transition text-sm font-bold">Keluar</button>
+            </header>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 glass p-6 rounded-3xl space-y-4 border border-white/5">
+                    <div class="flex justify-between items-center">
+                        <h3 class="font-bold text-lg">Lobi Permainan</h3>
+                        <button id="create-lobby-btn" class="px-4 py-2 bg-indigo-600 rounded-xl text-sm font-bold">Buat Lobi</button>
+                    </div>
+                    <div id="lobby-list" class="space-y-3"></div>
+                </div>
+                <div class="glass p-6 rounded-3xl space-y-4 border border-white/5">
+                    <h3 class="font-bold text-lg">Cari Teman</h3>
+                    <div id="user-search-list" class="space-y-2 text-sm"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lobby Room Screen -->
+        <div id="lobby-room-screen" class="hidden w-full max-w-2xl glass p-8 rounded-3xl border-2 border-indigo-500/50 space-y-8">
+            <div class="text-center flex flex-col items-center">
+                <h2 class="text-2xl font-black">RUANG TUNGGU</h2>
+                <div class="mt-4 flex items-center gap-4 bg-slate-800 p-2 px-6 rounded-full border border-slate-700">
+                    <button id="toggle-mic-btn" class="p-2 bg-slate-700 rounded-full hover:bg-slate-600 transition">
+                        <svg id="mic-icon" class="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path></svg>
+                    </button>
+                    <span class="text-xs font-bold text-slate-400 uppercase">Voice Chat Aktif</span>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4" id="lobby-slots"></div>
+            <div class="flex gap-4">
+                <button id="leave-lobby-btn" class="flex-1 py-4 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold transition">Keluar</button>
+                <button id="start-game-btn" class="hidden flex-[2] py-4 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold transition">MULAI GAME</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUDIO & GAME CONTAINER -->
+    <div id="remote-audio-container" class="hidden"></div>
+    <div id="game-container"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc, deleteDoc, arrayUnion } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'weakest-link-distinct';
+
+        let currentUser = null;
+        let userData = null;
+        let isSignup = false;
+        let activeLobbyId = null;
+        let phaserGame = null;
+        
+        let peer = null;
+        let myPeerId = null;
+        let localStream = null;
+        let isMuted = true;
+        let activeCalls = {};
+
+        // --- Voice Setup ---
+        async function initVoice() {
+            peer = new Peer();
+            peer.on('open', (id) => { myPeerId = id; });
+            peer.on('call', (call) => { call.answer(localStream); handleCall(call); });
+        }
+
+        async function setupLocalStream() {
+            try { localStream = await navigator.mediaDevices.getUserMedia({ audio: true }); localStream.getAudioTracks()[0].enabled = false; } catch (e) {}
+        }
+
+        function handleCall(call) {
+            activeCalls[call.peer] = call;
+            call.on('stream', (rs) => {
+                const a = document.createElement('audio'); a.srcObject = rs; a.autoplay = true;
+                document.getElementById('remote-audio-container').appendChild(a);
+            });
+        }
+
+        document.getElementById('toggle-mic-btn').onclick = () => {
+            isMuted = !isMuted;
+            if (localStream) localStream.getAudioTracks()[0].enabled = !isMuted;
+            document.getElementById('mic-icon').classList.toggle('text-red-400', isMuted);
+            document.getElementById('mic-icon').classList.toggle('text-green-400', !isMuted);
+            if (activeLobbyId) updateLobbyMic();
+        };
+
+        async function updateLobbyMic() {
+            const ref = doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', activeLobbyId);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+                const players = snap.data().players.map(p => p.uid === currentUser.uid ? { ...p, micOn: !isMuted, peerId: myPeerId } : p);
+                await updateDoc(ref, { players });
+            }
+        }
+
+        // --- Auth & Lobby ---
+        document.getElementById('auth-toggle-btn').onclick = () => {
+            isSignup = !isSignup;
+            document.getElementById('signup-fields').classList.toggle('hidden', !isSignup);
+            document.getElementById('auth-btn').innerText = isSignup ? 'Daftar' : 'Masuk';
+        };
+
+        document.getElementById('auth-btn').onclick = async () => {
+            const email = document.getElementById('email-input').value;
+            const password = document.getElementById('password-input').value;
+            const username = document.getElementById('username-input').value;
+            try {
+                if (isSignup) {
+                    const res = await createUserWithEmailAndPassword(auth, email, password);
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', res.user.uid), { uid: res.user.uid, username, email });
+                } else await signInWithEmailAndPassword(auth, email, password);
+            } catch (e) { alert(e.message); }
+        };
+
+        document.getElementById('logout-btn').onclick = () => signOut(auth);
+
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                currentUser = user;
+                const snap = await getDoc(doc(db, 'artifacts', appId, 'public', 'data', 'users', user.uid));
+                userData = snap.data();
+                showView('dashboard');
+                initDashboard();
+                initVoice();
+                setupLocalStream();
+            } else showView('auth');
+        });
+
+        function initDashboard() {
+            document.getElementById('display-name').innerText = userData.username;
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'lobbies'), (snap) => {
+                const list = document.getElementById('lobby-list');
+                list.innerHTML = "";
+                snap.forEach(d => {
+                    const lobby = d.data();
+                    if (lobby.status !== 'waiting') return;
+                    const item = document.createElement('div');
+                    item.className = "flex justify-between items-center glass p-4 rounded-2xl border border-white/5";
+                    item.innerHTML = `<div><p class="font-bold">${lobby.hostName}'s Room</p><p class="text-[10px] text-slate-400 uppercase">${lobby.players.length}/4 PEMAIN</p></div><button class="px-4 py-2 bg-indigo-600 rounded-lg text-xs font-bold">JOIN</button>`;
+                    item.querySelector('button').onclick = () => joinLobby(d.id, lobby);
+                    list.appendChild(item);
+                });
+            });
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'users'), snap => {
+                const sl = document.getElementById('user-search-list');
+                sl.innerHTML = "";
+                snap.forEach(d => {
+                    const u = d.data(); if(u.uid === currentUser.uid) return;
+                    const it = document.createElement('div');
+                    it.className = "flex justify-between items-center p-2 hover:bg-white/5 rounded-lg";
+                    it.innerHTML = `<span>${u.username}</span><button class="text-indigo-400 font-bold">+ADD</button>`;
+                    sl.appendChild(it);
+                });
+            });
+        }
+
+        document.getElementById('create-lobby-btn').onclick = async () => {
+            const id = "lobby_" + Date.now();
+            const ldata = { id, hostId: currentUser.uid, hostName: userData.username, status: 'waiting', players: [{ uid: currentUser.uid, username: userData.username, role: 1, micOn: !isMuted, peerId: myPeerId }] };
+            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', id), ldata);
+            enterLobbyRoom(id);
+        };
+
+        async function joinLobby(id, data) {
+            if (data.players.length >= 4) return alert("Full!");
+            const roles = data.players.map(p => p.role);
+            let nextRole = 1; while(roles.includes(nextRole)) nextRole++;
+            const players = [...data.players, { uid: currentUser.uid, username: userData.username, role: nextRole, micOn: !isMuted, peerId: myPeerId }];
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', id), { players });
+            enterLobbyRoom(id);
+        }
+
+        function enterLobbyRoom(id) {
+            activeLobbyId = id; showView('lobby-room');
+            onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', id), (snap) => {
+                if (!snap.exists()) return showView('dashboard');
+                const lobby = snap.data();
+                const slots = document.getElementById('lobby-slots');
+                slots.innerHTML = "";
+                const colors = ['#f87171', '#4ade80', '#60a5fa', '#facc15'];
+                for (let i = 1; i <= 4; i++) {
+                    const p = lobby.players.find(x => x.role === i);
+                    const div = document.createElement('div');
+                    div.className = `p-4 rounded-2xl border ${p ? 'bg-indigo-600/10' : 'bg-slate-800/50'}`;
+                    div.style.borderColor = p ? colors[i-1] : '#334155';
+                    div.innerHTML = `<span class="text-[10px] font-bold uppercase" style="color: ${p ? colors[i-1] : '#64748b'}">Slot ${i}</span>
+                                    <p class="font-black text-lg ${p ? 'text-white' : 'text-slate-600'}">${p ? p.username : 'KOSONG'}</p>`;
+                    slots.appendChild(div);
+                    if (p && p.peerId && p.uid !== currentUser.uid && !activeCalls[p.peerId]) {
+                        const call = peer.call(p.peerId, localStream); if (call) handleCall(call);
+                    }
+                }
+                document.getElementById('start-game-btn').classList.toggle('hidden', lobby.hostId !== currentUser.uid);
+                document.getElementById('start-game-btn').disabled = lobby.players.length < 2;
+                if (lobby.status === 'playing') startPhaserGame(lobby);
+            });
+        }
+
+        document.getElementById('leave-lobby-btn').onclick = async () => {
+            const ref = doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', activeLobbyId);
+            const snap = await getDoc(ref);
+            const players = snap.data().players.filter(p => p.uid !== currentUser.uid);
+            if (players.length === 0) await deleteDoc(ref);
+            else await updateDoc(ref, { players });
+            Object.values(activeCalls).forEach(c => c.close()); activeCalls = {};
+            showView('dashboard');
+        };
+
+        document.getElementById('start-game-btn').onclick = async () => {
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', activeLobbyId), { status: 'playing' });
+        };
+
+        // --- Phaser Game Logic ---
+        function startPhaserGame(lobby) {
+            uiRoot.style.display = 'none';
+            gameContainer.style.display = 'block';
+            const myRole = lobby.players.find(p => p.uid === currentUser.uid).role;
+
+            const config = {
+                type: Phaser.AUTO, width: window.innerWidth, height: window.innerHeight, parent: 'game-container',
+                backgroundColor: '#0f172a', physics: { default: 'matter', matter: { gravity: { y: 1.2 } } },
+                scene: {
+                    create: function() {
+                        const w = window.innerWidth; const h = window.innerHeight;
+                        this.matter.world.setBounds(0,0,w,h,64,true,true,false,true);
+                        const gy = h - 70;
+                        this.matter.add.rectangle(w*0.2, gy, w*0.35, 40, {isStatic:true});
+                        this.matter.add.rectangle(w*0.8, gy, w*0.35, 40, {isStatic:true});
+
+                        this.sprites = {};
+                        const colors = [0xf87171, 0x4ade80, 0x60a5fa, 0xfacc15];
+                        const sortedPlayers = lobby.players.sort((a,b) => a.role - b.role);
+
+                        sortedPlayers.forEach((p, index) => {
+                            const sx = (w * 0.1) + (index * 70); const sy = gy - 120;
+                            const isMe = p.role === myRole;
+                            
+                            // Visual Bola
+                            const circ = this.add.circle(sx, sy, 22, colors[p.role-1]);
+                            // Tambah Border Putih Tebal jika ini adalah "KAMU"
+                            if (isMe) {
+                                circ.setStrokeStyle(4, 0xffffff);
+                                // Efek Glow sederhana
+                                this.tweens.add({ targets: circ, alpha: 0.7, duration: 800, yoyo: true, repeat: -1 });
+                            } else {
+                                circ.setStrokeStyle(2, 0x000000, 0.3);
+                            }
+
+                            const body = this.matter.add.circle(sx, sy, 22, {friction:0.1, restitution: 0.2});
+                            
+                            // Username Label
+                            const nameText = this.add.text(sx, sy-45, isMe ? `(ANDA) ${p.username}` : p.username, {
+                                fontSize:'14px', fill: isMe ? '#ffffff' : '#cbd5e1', fontStyle: 'bold', stroke: '#000000', strokeThickness: 3
+                            }).setOrigin(0.5);
+
+                            this.sprites[p.role] = { visual: circ, body, label: nameText };
+                        });
+
+                        this.chains = [];
+                        for(let i=0; i < sortedPlayers.length - 1; i++){
+                            const c = this.matter.add.constraint(this.sprites[sortedPlayers[i].role].body, this.sprites[sortedPlayers[i+1].role].body, 90, 0.2);
+                            this.chains.push({c, g: this.add.graphics()});
+                        }
+
+                        this.time.addEvent({ delay: 70, callback: () => {
+                            const b = this.sprites[myRole].body;
+                            setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'lobbies', activeLobbyId, 'pos', `p${myRole}`), { x: b.position.x, y: b.position.y, vx: b.velocity.x, vy: b.velocity.y });
+                        }, loop: true });
+
+                        onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'lobbies', activeLobbyId, 'pos'), s => {
+                            s.forEach(d => {
+                                const id = parseInt(d.id.replace('p',''));
+                                if(id !== myRole && this.sprites[id]){
+                                    const data = d.data();
+                                    this.matter.body.setPosition(this.sprites[id].body, {x:data.x, y:data.y});
+                                    this.matter.body.setVelocity(this.sprites[id].body, {x:data.vx, y:data.vy});
+                                }
+                            });
+                        });
+                        createHUD(this);
+                    },
+                    update: function() {
+                        if (!this.sprites[myRole]) return;
+                        const b = this.sprites[myRole].body;
+                        if(window.mvL) this.matter.applyForce(b, {x: -0.02, y:0});
+                        else if(window.mvR) this.matter.applyForce(b, {x: 0.02, y:0});
+                  
